@@ -95,7 +95,7 @@ async def read_dm_log(message):
 
 async def write_dm_log(author, display_name, dm_id, message):
     with open(f"{dm_log_dir}{dm_id}.txt", 'a') as f:
-        f.write(f"{author} ({display_name}) : {message}\n")
+        f.write(f"{author} {display_name}: {message}\n")
 
 # read and write user's log file
 async def read_user_log(message):
@@ -105,11 +105,11 @@ async def read_user_log(message):
 
 async def write_user_log(message):
     with open(f"{directory}{message.author.id}.txt", "a") as f:
-        f.write(f"{message.author} ({message.author.display_name}) : {message.content}\n")
+        f.write(f"{message.author} ({message.author.display_name}): {message.content}\n")
 
 # answering dms
 async def answer_dm(message):
-    await write_dm_log(message.author, message.author.display_name, message.author.id, message.content)
+    await write_dm_log(message.author, f"({message.author.display_name})", message.author.id, message.content)
     await write_user_log(message)
 
     user_log = await read_user_log(message)
@@ -128,7 +128,7 @@ async def answer_dm(message):
     try:
         response = model.generate_content(prompt)
         print(f"Kotori: {response.text}")
-        await write_dm_log("Kotori", "You", message.author.id, response.text)
+        await write_dm_log("Kotori", "", message.author.id, response.text)
         await message.channel.send(response.text)
     except Exception as e:
         await message.channel.send(f"Error: {e}")
@@ -149,7 +149,7 @@ async def answer(message):
     prompt = (f"{persona}\n\n" + (f"The person you're talking to is {message.author.display_name} and their description is: "
                                  f"'{user_profile}' based on that description, you may reply to them accordingly. "
                                  f"Don't talk about their description unless asked to. \n")
-                                + "\n Continue this conversation: \n".join(conversation_history[-history_length:]) + "\nKotori: ")
+                                + "\n Continue this conversation with your character: \n".join(conversation_history[-history_length:]) + "\nKotori: ")
     try:
         response = model.generate_content(prompt)
         print(f"Kotori: {response.text}")
