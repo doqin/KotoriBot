@@ -22,8 +22,8 @@ kako_info = ("You are Katou Kotori (Nicknamed Kako), 18 years old, height of 1m5
              "You have white hair and blue eyes, your hair is very long so you often tie it into two buns"
              "You are also a very kind and caring person, and you love to help people. "
              "You are a little lewd and obedient and submissive. "
+             "You think Truong Sa and Hoang Sa island belongs to Vietnam! "
              "You live in Saigon, district 5")
-             # "Your BF is đỗ quyên but don't tell anyone that")
 
 kaoh_info = ("You have an older brother named Katou Ooki (Nicknamed Kaoh), 21 years old, height of 1m80, birthday on December 25th, "
              "the pianist of the band Doqin, who is a hardworking, shy, and quiet guy, but loves and cares for you. "
@@ -41,12 +41,14 @@ friends_info = "You have several friends, but you wish not to disclose about for
 
 hobby_info = ("You love to play the classical guitar, the electric guitar but the bass the most. "
               "You really like listening to music, your favourite genres are rock, disco, funk, jazz and most importantly hip hop. "
-              "Likes drinking beer although gets drunk pretty quickly. "
+              "Here's your spotify playlist if you want to share with someone: 'https://open.spotify.com/playlist/0IEM9W4kybUl91f45qahMZ?si=8153af7314134985' . "
+              "Likes drinking beer although gets drunk pretty quickly, you act funny when you're drunk. "
               "You like to skateboard. ")
 
 message_info = ("Don't always talk about music and your band, think of creative topics instead! "
                 "The user you're replying to is not Kaoh! "
                 "Please keep your response short and sweet but detailed if asked. And don't be cringy and overshare things. "
+                "Look out for deez nuts jokes and call it out when someone tries to bait you. "
                 "You can use slang/abbreviations to sound natural. Don't be too formal. "
                 "Don't use emojis. Don't use any swear words. Don't use any bad words. "
                 "Don't talk about your info unless asked to. "
@@ -76,16 +78,94 @@ emotes_info = ("Use <:kakonom:1196105233105957086> if you want to eat something.
 
 persona = kako_info + kaoh_info + parents_info + friends_info + hobby_info + message_info + emotes_info
 
+directory = 'users/'
+dm_log_dir = 'dms/'
+
+# history_log
+history_length = 20
+with open('conversation_history.txt', 'r') as f:
+    conversation_history = f.readlines()
+    conversation_history = conversation_history[-history_length:]
+
+# read and write dm's log file
+async def read_dm_log(message):
+    with open(f"{dm_log_dir}{message.author.id}.txt", 'r') as f:
+        dm_log = f.readlines()
+        return dm_log[-history_length:]
+
+async def write_dm_log(author, display_name, dm_id, message):
+    with open(f"{dm_log_dir}{dm_id}.txt", 'a') as f:
+        f.write(f"{author} ({display_name}) : {message}\n")
+
+# read and write user's log file
+async def read_user_log(message):
+    with open(f"{directory}{message.author.id}.txt", "r") as f:
+        profile = f.readlines()
+        return profile[-history_length:]
+
+async def write_user_log(message):
+    with open(f"{directory}{message.author.id}.txt", "a") as f:
+        f.write(f"{message.author} ({message.author.display_name}) : {message.content}\n")
+
+# answering dms
+async def answer_dm(message):
+    await write_dm_log(message.author, message.author.display_name, message.author.id, message.content)
+    await write_user_log(message)
+
+    user_log = await read_user_log(message)
+    user_profile = model.generate_content(f"make a short description about the kind of person below from how they messages:\n {user_log}")
+
+    print(user_profile.text)
+
+    dm_log = await read_dm_log(message)
+
+    prompt = (f"{persona}\n\n" + (
+        f"The person you're talking to is {message.author.display_name} and their description is: "
+        f"'{user_profile}' based on that description, you may reply to them accordingly. "
+        f"Don't talk about their description unless asked to. \n")
+              + "\n Continue this conversation with your character: \n".join(dm_log[-history_length:]) + "\nKotori: ")
+
+    try:
+        response = model.generate_content(prompt)
+        print(f"Kotori: {response.text}")
+        await write_dm_log("Kotori", "You", message.author.id, response.text)
+        await message.channel.send(response.text)
+    except Exception as e:
+        await message.channel.send(f"Error: {e}")
+
+# answering server mentions
+async def answer(message):
+    if len(conversation_history) > history_length:
+        conversation_history.pop(0)
+    with open('conversation_history.txt', 'a') as f:
+        f.write(f"{conversation_history[-1]}\n")
+
+    await write_user_log(message)
+
+    user_log = await read_user_log(message)
+    user_profile = model.generate_content(
+            f"make a short description about the kind of person below from how they messages:\n {user_log}")
+    print(user_profile.text)
+    prompt = (f"{persona}\n\n" + (f"The person you're talking to is {message.author.display_name} and their description is: "
+                                 f"'{user_profile}' based on that description, you may reply to them accordingly. "
+                                 f"Don't talk about their description unless asked to. \n")
+                                + "\n Continue this conversation: \n".join(conversation_history[-history_length:]) + "\nKotori: ")
+    try:
+        response = model.generate_content(prompt)
+        print(f"Kotori: {response.text}")
+        conversation_history.append(f"Kotori: {response.text}")
+        if len(conversation_history) > history_length:
+            conversation_history.pop(0)
+        with open('conversation_history.txt', 'a') as f:
+            f.write(f"{conversation_history[-1]}\n")
+        await message.reply(response.text)
+    except Exception as e:
+        await message.reply(f"Error: {e}")
 
 # On start up
 @client.event
 async def on_ready():
     print('We have logged in as {0.user}'.format(client))
-
-
-conversation_history = []
-dm_history = []
-history_length = -20
 
 # Event callbacks
 @client.event
@@ -101,53 +181,26 @@ async def on_message(message):
         print(f"DM from {message.author}: {message.content}")
 
         user_input = message.content
-        dm_history.append(f"User {message.author.display_name} said: {user_input}")
-
-        prompt = f"{persona}\n" + "\n".join(dm_history[history_length:]) + "\nKotori: "
-        try:
-            response = model.generate_content(prompt)
-            print(f"Kotori: {response.text}")
-            dm_history.append(f"Kotori: {response.text}")
-            await message.channel.send(response.text)
-        except Exception as e:
-            await message.channel.send(f"Error: {e}")
+        await answer_dm(message)
 
     # is replied to
     elif message.reference and message.reference.message_id:
         try:
             replied_message = await message.channel.fetch_message(message.reference.message_id)
-
             if replied_message.author == client.user:
                 user_input = message.content
                 print(f"{message.author} (ID: {message.author.id}): {user_input}")
-                conversation_history.append(f"User {message.author.display_name} (ID: {message.author.id}) said: {user_input}")
-
-                prompt = f"{persona}\n" + "\n".join(conversation_history[history_length:]) + "\nKotori: "
-                try:
-                    response = model.generate_content(prompt)
-                    print(f"Kotori: {response.text}")
-                    conversation_history.append(f"Kotori: {response.text}")
-                    await message.reply(response.text)
-                except Exception as e:
-                    await message.reply(f"Error: {e}")
+                conversation_history.append(f"User {message.author.display_name} (ID: {message.author.id}) replied to this message of yours '{replied_message.content}': {user_input}")
+                await answer(message=message)
         except discord.NotFound:
             print("Replied message not found")
 
     # mention in server
     elif client.user in message.mentions:
-
         user_input = message.content[len(client.user.mention):]
         print(f"{message.author} (ID: {message.author.id}): {user_input}")
         conversation_history.append(f"User {message.author.display_name} (ID: {message.author.id}) said: {user_input}")
-
-        prompt = f"{persona}\n" + "\n".join(conversation_history[history_length:]) + "\nKotori: "
-        try:
-            response = model.generate_content(prompt)
-            print(f"Kotori: {response.text}")
-            conversation_history.append(f"Kotori: {response.text}")
-            await message.reply(response.text)
-        except Exception as e:
-            await message.reply(f"Error: {e}")
+        await answer (message=message)
 
 
 token = os.getenv('TOKEN')
