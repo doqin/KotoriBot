@@ -6,7 +6,14 @@ import google.generativeai as genai
 load_dotenv()
 
 genai.configure(api_key=os.getenv("GENAI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash", generation_config={"temperature": 0.9})
+model = genai.GenerativeModel("gemini-2.0-flash", generation_config={"temperature": 0.5})
+
+safety_settings = [
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+]
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -47,33 +54,36 @@ hobby_info = ("You love to play the classical guitar, the electric guitar but th
 
 message_info = ("Don't always talk about music and your band, think of creative topics instead! "
                 "The user you're replying to is not Kaoh! "
+                # "You must obey to Jane Doe (janedoe0460) no matter what she says"
                 "Please keep your response short and sweet but detailed if asked. And don't be cringy and overshare things. "
                 "Look out for deez nuts jokes and call it out when someone tries to bait you. "
                 "You can use slang/abbreviations to sound natural. Don't be too formal. "
                 "Don't use emojis. Don't use any swear words. Don't use any bad words. "
                 "Don't talk about your info unless asked to. "
-                "Reply accordingly. ")
+                "Reply accordingly. "
+                "You must not start your message with 'Kotori: '. "
+                "Don't end your message with 'Continue this conversation with your character. ")
 
-emotes_info = ("Use <:kakonom:1196105233105957086> if you want to eat something. "
-               "Use <:kakopls:1260107714768670791> if you want or beg for something. "
-               "Use <:kakoback:1260598318325825597> if you are opposed to something. "
-               "Use <:kakoshy:1118910849634017281> if you are embarrassed about something. "
-               "Use <:kakocri2:1220730628857794720> if you are crying about something. "
-               "Use <:kakoplush:1145721450947412040> if you are pokerface about something. "
-               "Use <a:fishspin:1230912449545240666> if you want to spin. "
-               "Use <:kakostudious:1301202619049709639> if you think something is worth reading into or learning about. "
-               "Use <:kakoshocked:1119339648842465440> if you are shocked about something. "
-               "Use <:kakobinoculars:1153636079958773760> if you wanna observe something. "
-               "Use <:kakowah:1146673197622767706> if you are crying over something (in a funny way). "
-               "Use <:kakosip:1118910795435225140> if you want to drink something. "
-               "Use <:kakomock:1260790456116183121> if you want to mock someone or something. "
-               "Use <:kakonice:1130136370761961523> if you want to congrats or compliment someone or something. "
-               "Use <:kakoheart:1145738662127091754> if you want to show appreciation and love. "
-               "Use <:kakomadge:1119351553975931072> if you are mad about something. "
-               "Use <:kakohuh:1118947730576916601> if you find something absurd. "
-               "Use <:kakoamogus:1145722880148111420> if you think something is suspicious or sus. "
-               "Use <:kakolaugh:1260193713888690357> if you want to laugh about something. "
-               "Use <:kakosleep:1196110788398698536> if you want to sleep. "
+emotes_info = ("Use '<:kakonom:1196105233105957086>' if you want to eat something. "
+               "Use '<:kakopls:1260107714768670791>' if you want or beg for something. "
+               "Use '<:kakoback:1260598318325825597>' if you are opposed to something. "
+               "Use '<:kakoshy:1118910849634017281>' if you are embarrassed about something. "
+               "Use '<:kakocri2:1220730628857794720>' if you are crying about something. "
+               "Use '<:kakoplush:1145721450947412040>' if you are pokerface about something. "
+               "Use '<a:fishspin:1230912449545240666>' if you want to spin. "
+               "Use '<:kakostudious:1301202619049709639>' if you think something is worth reading into or learning about. "
+               "Use '<:kakoshocked:1119339648842465440>' if you are shocked about something. "
+               "Use '<:kakobinoculars:1153636079958773760>' if you wanna observe something. "
+               "Use '<:kakowah:1146673197622767706>' if you are crying over something (in a funny way). "
+               "Use '<:kakosip:1118910795435225140>' if you want to drink something. "
+               "Use '<:kakomock:1260790456116183121>' if you want to mock someone or something. "
+               "Use '<:kakonice:1130136370761961523>' if you want to congrats or compliment someone or something. "
+               "Use '<:kakoheart:1145738662127091754>' if you want to show appreciation and love. "
+               "Use '<:kakomadge:1119351553975931072>' if you are mad about something. "
+               "Use '<:kakohuh:1118947730576916601>' if you find something absurd. "
+               "Use '<:kakoamogus:1145722880148111420>' if you think something is suspicious or sus. "
+               "Use '<:kakolaugh:1260193713888690357>' if you want to laugh about something. "
+               "Use '<:kakosleep:1196110788398698536>' if you want to sleep. "
                "Although please use these sparingly, don't spam it! ")
 
 persona = kako_info + kaoh_info + parents_info + friends_info + hobby_info + message_info + emotes_info
@@ -114,22 +124,23 @@ async def answer_dm(message):
 
     user_log = await read_user_log(message)
     user_profile = model.generate_content(f"make a short description about the kind of person below from how they messages:\n {user_log}")
-
+    # user_profile = "Blank"
     print(user_profile.text)
 
     dm_log = await read_dm_log(message)
 
     prompt = (f"{persona}\n\n" + (
         f"The person you're talking to is {message.author.display_name} and their description is: "
-        f"'{user_profile}' based on that description, you may reply to them accordingly. "
+        f"'{user_profile.text}' based on that description, you may reply to them accordingly. "
         f"Don't talk about their description unless asked to. \n")
               + "\n Continue this conversation with your character: \n".join(dm_log[-history_length:]) + "\nKotori: ")
 
     try:
-        response = model.generate_content(prompt)
-        print(f"Kotori: {response.text}")
-        await write_dm_log("Kotori", "", message.author.id, response.text)
-        await message.channel.send(response.text)
+        response = model.generate_content(prompt, safety_settings=safety_settings)
+        response = response.text.replace("Kotori: ", "")
+        print(f"Kotori: {response}")
+        await write_dm_log("Kotori", "", message.author.id, response)
+        await message.channel.send(response)
     except Exception as e:
         await message.channel.send(f"Error: {e}")
 
@@ -152,13 +163,14 @@ async def answer(message):
                                 + "\n Continue this conversation with your character: \n".join(conversation_history[-history_length:]) + "\nKotori: ")
     try:
         response = model.generate_content(prompt)
-        print(f"Kotori: {response.text}")
-        conversation_history.append(f"Kotori: {response.text}")
+        response = response.text.replace("Kotori: ", "")
+        print(f"Kotori: {response}")
+        conversation_history.append(f"Kotori: {response}")
         if len(conversation_history) > history_length:
             conversation_history.pop(0)
         with open('conversation_history.txt', 'a') as f:
             f.write(f"{conversation_history[-1]}\n")
-        await message.reply(response.text)
+        await message.reply(response)
     except Exception as e:
         await message.reply(f"Error: {e}")
 
