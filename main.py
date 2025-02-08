@@ -128,11 +128,31 @@ async def write_server_log(message, guild_id):
 
 # return the necessary prompt
 def get_prompt(message, user_profile, history):
+    with open(f"memory.txt", "r") as f:
+        memory = f.readlines()
     return (f"{persona}\n\n" + (
         f"The person you're talking to is {message.author.display_name} and their description is: "
         f"'{user_profile.text}' based on that description, you may reply to them accordingly. "
-        f"Don't talk about their description unless asked to. \n")
+        "Don't talk about their description unless asked to. \n")
+            + "Your memory of people you've talked to: '".join(memory) + "'"
               + "\n Continue this conversation with your character: \n".join(history[-history_length:]) + "\nKotori: ")
+
+async def read_write_memory(message, user_log):
+    user_profile = model.generate_content(
+        f"make a short description about the kind of person below from how they messages with some key points of the conversation, write it in one paragraph:\n {user_log}")
+    with open(f"memory.txt", 'r') as f:
+        lines = f.readlines()
+    lines = [element for element in lines if f"{message.author} ({message.author.display_name}):" not in element and element != '\n']
+    lines.append(f"{message.author} ({message.author.display_name}): {user_profile.text}\n")
+    if len(lines) > history_length:
+        with open(f"memory.txt", 'w') as f:
+            f.writelines(lines[1:])
+    else:
+        with open(f"memory.txt", 'w') as f:
+            f.writelines(lines)
+
+    return user_profile
+
 
 # answering dms
 async def answer_dm(message):
@@ -140,8 +160,7 @@ async def answer_dm(message):
     await write_user_log(message)
 
     user_log = await read_user_log(message)
-    user_profile = model.generate_content(f"make a short description about the kind of person below from how they messages:\n {user_log}")
-    # user_profile = "Blank"
+    user_profile = await read_write_memory(message, user_log)
     print(user_profile.text)
 
     dm_log = await read_dm_log(message)
@@ -151,6 +170,7 @@ async def answer_dm(message):
     try:
         response = model.generate_content(prompt, safety_settings=safety_settings)
         response = response.text.replace("Kotori: ", "")
+        response = response.replace("Continue this conversation with your character:", "")
         print(f"Kotori: {response}")
         await write_dm_log("Kotori", "", message.author.id, response)
         await message.channel.send(response)
@@ -163,14 +183,14 @@ async def answer(message):
 
     server_log = await read_server_log(message)
     user_log = await read_user_log(message)
-    user_profile = model.generate_content(
-            f"make a short description about the kind of person below from how they messages:\n {user_log}")
+    user_profile = await read_write_memory(message, user_log)
     print(user_profile.text)
     prompt = get_prompt(message, user_profile, server_log)
 
     try:
         response = model.generate_content(prompt)
         response = response.text.replace("Kotori: ", "")
+        response = response.replace("Continue this conversation with your character:", "")
         print(f"Kotori: {response}")
         await write_server_log(f"Kotori: {response}\n", message.guild.id)
         await message.reply(response)
@@ -194,8 +214,6 @@ async def on_message(message):
     # in dm
     if message.guild is None:
         print(f"DM from {message.author}: {message.content}\n")
-
-        user_input = message.content
         await answer_dm(message)
 
     # is replied to
