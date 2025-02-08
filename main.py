@@ -88,14 +88,13 @@ emotes_info = ("Use '<:kakonom:1196105233105957086>' if you want to eat somethin
 
 persona = kako_info + kaoh_info + parents_info + friends_info + hobby_info + message_info + emotes_info
 
-directory = 'users/'
+# directories
+user_log_dir = 'users/'
 dm_log_dir = 'dms/'
+server_log_dir = 'guilds/'
 
 # history_log
 history_length = 20
-with open('conversation_history.txt', 'r') as f:
-    conversation_history = f.readlines()
-    conversation_history = conversation_history[-history_length:]
 
 # read and write dm's log file
 async def read_dm_log(message):
@@ -109,13 +108,31 @@ async def write_dm_log(author, display_name, dm_id, message):
 
 # read and write user's log file
 async def read_user_log(message):
-    with open(f"{directory}{message.author.id}.txt", "r") as f:
+    with open(f"{user_log_dir}{message.author.id}.txt", "r") as f:
         profile = f.readlines()
         return profile[-history_length:]
 
 async def write_user_log(message):
-    with open(f"{directory}{message.author.id}.txt", "a") as f:
+    with open(f"{user_log_dir}{message.author.id}.txt", "a") as f:
         f.write(f"{message.author} ({message.author.display_name}): {message.content}\n")
+
+# read and write server's log file
+async def read_server_log(message):
+    with open(f"{server_log_dir}{message.guild.id}.txt", "r") as f:
+        server_log = f.readlines()
+        return server_log[-history_length:]
+
+async def write_server_log(message, guild_id):
+    with open(f"{server_log_dir}{guild_id}.txt", "a") as f:
+        f.write(message)
+
+# return the necessary prompt
+def get_prompt(message, user_profile, history):
+    return (f"{persona}\n\n" + (
+        f"The person you're talking to is {message.author.display_name} and their description is: "
+        f"'{user_profile.text}' based on that description, you may reply to them accordingly. "
+        f"Don't talk about their description unless asked to. \n")
+              + "\n Continue this conversation with your character: \n".join(history[-history_length:]) + "\nKotori: ")
 
 # answering dms
 async def answer_dm(message):
@@ -129,11 +146,7 @@ async def answer_dm(message):
 
     dm_log = await read_dm_log(message)
 
-    prompt = (f"{persona}\n\n" + (
-        f"The person you're talking to is {message.author.display_name} and their description is: "
-        f"'{user_profile.text}' based on that description, you may reply to them accordingly. "
-        f"Don't talk about their description unless asked to. \n")
-              + "\n Continue this conversation with your character: \n".join(dm_log[-history_length:]) + "\nKotori: ")
+    prompt = get_prompt(message, user_profile, dm_log)
 
     try:
         response = model.generate_content(prompt, safety_settings=safety_settings)
@@ -146,30 +159,20 @@ async def answer_dm(message):
 
 # answering server mentions
 async def answer(message):
-    if len(conversation_history) > history_length:
-        conversation_history.pop(0)
-    with open('conversation_history.txt', 'a') as f:
-        f.write(f"{conversation_history[-1]}\n")
-
     await write_user_log(message)
 
+    server_log = await read_server_log(message)
     user_log = await read_user_log(message)
     user_profile = model.generate_content(
             f"make a short description about the kind of person below from how they messages:\n {user_log}")
     print(user_profile.text)
-    prompt = (f"{persona}\n\n" + (f"The person you're talking to is {message.author.display_name} and their description is: "
-                                 f"'{user_profile}' based on that description, you may reply to them accordingly. "
-                                 f"Don't talk about their description unless asked to. \n")
-                                + "\n Continue this conversation with your character: \n".join(conversation_history[-history_length:]) + "\nKotori: ")
+    prompt = get_prompt(message, user_profile, server_log)
+
     try:
         response = model.generate_content(prompt)
         response = response.text.replace("Kotori: ", "")
         print(f"Kotori: {response}")
-        conversation_history.append(f"Kotori: {response}")
-        if len(conversation_history) > history_length:
-            conversation_history.pop(0)
-        with open('conversation_history.txt', 'a') as f:
-            f.write(f"{conversation_history[-1]}\n")
+        await write_server_log(f"Kotori: {response}\n", message.guild.id)
         await message.reply(response)
     except Exception as e:
         await message.reply(f"Error: {e}")
@@ -190,7 +193,7 @@ async def on_message(message):
 
     # in dm
     if message.guild is None:
-        print(f"DM from {message.author}: {message.content}")
+        print(f"DM from {message.author}: {message.content}\n")
 
         user_input = message.content
         await answer_dm(message)
@@ -201,8 +204,8 @@ async def on_message(message):
             replied_message = await message.channel.fetch_message(message.reference.message_id)
             if replied_message.author == client.user:
                 user_input = message.content
-                print(f"{message.author} (ID: {message.author.id}): {user_input}")
-                conversation_history.append(f"User {message.author.display_name} (ID: {message.author.id}) replied to this message of yours '{replied_message.content}': {user_input}")
+                print(f"{message.author} (ID: {message.author.id}): {user_input}\n")
+                await write_server_log(f"User {message.author.display_name} (ID: {message.author.id}) replied to this message of yours '{replied_message.content}': {user_input}\n", message.guild.id)
                 await answer(message=message)
         except discord.NotFound:
             print("Replied message not found")
@@ -210,8 +213,8 @@ async def on_message(message):
     # mention in server
     elif client.user in message.mentions:
         user_input = message.content[len(client.user.mention):]
-        print(f"{message.author} (ID: {message.author.id}): {user_input}")
-        conversation_history.append(f"User {message.author.display_name} (ID: {message.author.id}) said: {user_input}")
+        print(f"{message.author} (ID: {message.author.id}): {user_input}\n")
+        await write_server_log(f"User {message.author.display_name} (ID: {message.author.id}) said: {user_input}\n", message.guild.id)
         await answer (message=message)
 
 
