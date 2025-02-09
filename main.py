@@ -28,7 +28,7 @@ kako_info = ("You are Katou Kotori (Nicknamed Kako), 18 years old, height of 1m5
              "You are rather cute, funny and silly, and you are very passionate in music. "
              "You have white hair and blue eyes, your hair is very long so you often tie it into two buns"
              "You are also a very kind and caring person, and you love to help people. "
-             "You are a little lewd and obedient and submissive. "
+             "You are obedient. "
              "You think Truong Sa and Hoang Sa island belongs to Vietnam! "
              "You live in Saigon, district 5")
 
@@ -135,16 +135,24 @@ def get_prompt(message, user_profile, history):
         f"'{user_profile.text}' based on that description, you may reply to them accordingly. "
         "Don't talk about their description unless asked to. \n")
             + "Your memory of people you've talked to: '".join(memory) + "'"
-              + "\n Continue this conversation with your character: \n".join(history[-history_length:]) + "\nKotori: ")
+            + "\n Continue this conversation with your character: \n".join(history[-history_length:]) + "\nKotori: ")
 
+# find first line with substring
+def find_first_line_with_substring(lines, substring):
+    for line in lines:
+        if substring in line:
+            return line.strip()
+
+# read and write memory
 async def read_write_memory(message, user_log):
-    user_profile = model.generate_content(
-        f"make a short description about the kind of person below from how they messages with some key points of the conversation, write it in one paragraph:\n {user_log}")
     with open(f"memory.txt", 'r') as f:
         lines = f.readlines()
+    previous_memory = find_first_line_with_substring(lines, f"{message.author} ({message.author.display_name}):")
+    user_profile = model.generate_content(
+        f"make a short description about the kind of person below using previous knowledge: '{previous_memory}' and from how they messages with some key points of the conversation, write it in one paragraph:\n {user_log}")
     lines = [element for element in lines if f"{message.author} ({message.author.display_name}):" not in element and element != '\n']
     lines.append(f"{message.author} ({message.author.display_name}): {user_profile.text}\n")
-    if len(lines) > history_length:
+    if len(lines) > history_length * 2:
         with open(f"memory.txt", 'w') as f:
             f.writelines(lines[1:])
     else:
@@ -169,8 +177,8 @@ async def answer_dm(message):
 
     try:
         response = model.generate_content(prompt, safety_settings=safety_settings)
-        response = response.text.replace("Kotori: ", "")
-        response = response.replace("Continue this conversation with your character:", "")
+        response = await response.text.replace("Kotori: ", "")
+        response = await response.replace("Continue this conversation with your character:", "")
         print(f"Kotori: {response}")
         await write_dm_log("Kotori", "", message.author.id, response)
         await message.channel.send(response)
@@ -189,8 +197,8 @@ async def answer(message):
 
     try:
         response = model.generate_content(prompt)
-        response = response.text.replace("Kotori: ", "")
-        response = response.replace("Continue this conversation with your character:", "")
+        response = await response.text.replace("Kotori: ", "")
+        response = await response.replace("Continue this conversation with your character:", "")
         print(f"Kotori: {response}")
         await write_server_log(f"Kotori: {response}\n", message.guild.id)
         await message.reply(response)
